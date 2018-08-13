@@ -17,11 +17,19 @@ defmodule Monitor.Store do
     GenServer.cast(__MODULE__, {:put, key, record})
   end
 
+  def delete(key) do
+    GenServer.cast(__MODULE__, {:delete, key})
+  end
+
   def handle_call(:get, _from, state) do
     {:reply, state, state}
   end
 
   def handle_cast({:put, key, record}, state) do
     {:noreply, Map.put(state, key, record)}
+  end
+
+  def handle_cast({:delete, key}, state) do
+    {:noreply, Map.delete(state, key)}
   end
 end

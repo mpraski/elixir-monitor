@@ -10,6 +10,7 @@ defmodule Monitor.Application do
     urls = get_urls()
 
     children = [
+      {Registry, [keys: :unique, name: :url_registry]},
       {Monitor.Store, store},
       {Monitor.Coordinator, urls},
       :hackney_pool.child_spec(:lookup_pool, timeout: 10_000)

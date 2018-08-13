@@ -1,50 +1,34 @@
 defmodule Monitor.Coordinator do
-  use Task
+  use GenServer
 
   def start_link(list) do
-    Task.start_link(__MODULE__, :run, [list])
+    GenServer.start_link(__MODULE__, list, name: __MODULE__)
   end
 
-  def run(list) do
-    receive do
-    after
-      1_000 ->
-        process(list)
-        run(list)
-    end
+  def init(list) do
+    start_workers(list)
+    {:ok, list}
   end
 
-  defp process(list) do
-    list
-    |> Enum.map(&start_checker/1)
-    |> Enum.map(&receive_result/1)
+  def add_url(url) do
+    GenServer.cast(__MODULE__, {:add_url, url})
   end
 
-  defp start_checker(url) do
-    Monitor.Checker.start_link({self(), url})
+  def delete_url(url) do
+    GenServer.cast(__MODULE__, {:delete_url, url})
   end
 
-  defp receive_result(pid) do
-    receive do
-      {^pid, {:ok, url, status}} ->
-        save_result(url, status)
-
-      {^pid, {:error, url, message}} ->
-        notify_error(url, message)
-    end
+  def handle_cast({:add_url, url}, list) do
+    Monitor.Checker.start_link(url)
+    {:noreply, [url | list]}
   end
 
-  defp save_result(url, status) do
-    Monitor.Store.put(url, %Monitor.Result{
-      status: status,
-      last_checked: DateTime.utc_now()
-    })
+  def handle_cast({:delete_url, url}, list) do
+    Monitor.Checker.kill_yourself(url)
+    {:noreply, list -- [url]}
   end
 
-  defp notify_error(url, error) do
-    Monitor.Store.put(url, %Monitor.Result{
-      error: error,
-      last_checked: DateTime.utc_now()
-    })
+  defp start_workers(list) do
+    list |> Enum.each(&Monitor.Checker.start_link/1)
   end
 end
