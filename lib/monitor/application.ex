@@ -12,7 +12,7 @@ defmodule Monitor.Application do
     children = [
       {Registry, [keys: :unique, name: :url_registry]},
       {Monitor.Store, store},
-      {Monitor.Coordinator, urls},
+      {Monitor.CoordinatorSupervisor, urls},
       :hackney_pool.child_spec(:lookup_pool, timeout: 10_000)
     ]
 
