@@ -13,6 +13,7 @@ defmodule Monitor.Application do
       {Registry, [keys: :unique, name: :url_registry]},
       {Monitor.Store, store},
       {Monitor.CoordinatorSupervisor, urls},
+      {Monitor.PoolSupervisor, [size: 10]},
       :hackney_pool.child_spec(:lookup_pool, timeout: 10_000)
     ]
 
