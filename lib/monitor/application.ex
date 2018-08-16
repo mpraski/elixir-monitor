@@ -6,13 +6,12 @@ defmodule Monitor.Application do
   use Application
 
   def start(_type, _args) do
-    store = Application.get_env(:monitor, :initial_store)
+    table = :ets.new(:urls_table, [:set, :public])
     urls = get_urls()
 
     children = [
-      {Registry, [keys: :unique, name: :url_registry]},
-      {Monitor.Store, store},
-      {Monitor.CoordinatorSupervisor, urls},
+      {Monitor.Coordinator, {table, urls}},
+      :poolboy.child_spec(:checker, poolboy_checker_config()),
       :hackney_pool.child_spec(:lookup_pool, timeout: 10_000)
     ]
 
@@ -27,5 +26,14 @@ defmodule Monitor.Application do
       {:ok, %{"urls" => urls}} -> urls
       _ -> Process.exit(self(), "Could not load URLs")
     end
+  end
+
+  defp poolboy_checker_config do
+    [
+      {:name, {:local, :checker}},
+      {:worker_module, Monitor.Checker},
+      {:size, 100},
+      {:max_overflow, 900}
+    ]
   end
 end

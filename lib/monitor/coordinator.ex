@@ -1,34 +1,60 @@
 defmodule Monitor.Coordinator do
   use GenServer
 
-  def start_link(list) do
-    GenServer.start_link(__MODULE__, list, name: __MODULE__)
+  @frequency 1_000
+  @timeout 5_000
+
+  def start_link({_table, _list} = state) do
+    GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
 
-  def init(list) do
-    start_workers(list)
-    {:ok, list}
+  def init({_table, _list} = state) do
+    schedule_work()
+    {:ok, state}
   end
 
-  def add_url(url) do
-    GenServer.cast(__MODULE__, {:add_url, url})
+  def handle_info(:work, {table, list} = state) do
+    :ok = check_urls(table, list)
+    schedule_work()
+
+    {:noreply, state}
   end
 
-  def delete_url(url) do
-    GenServer.cast(__MODULE__, {:delete_url, url})
+  defp schedule_work do
+    Process.send_after(self(), :work, @frequency)
   end
 
-  def handle_cast({:add_url, url}, list) do
-    Monitor.Checker.start_link(url)
-    {:noreply, [url | list]}
+  defp check_urls(table, list) do
+    list
+    |> Enum.map(&request_check/1)
+    |> Enum.map(&Task.await(&1, @timeout))
+    |> Enum.each(&save_result(table, &1))
   end
 
-  def handle_cast({:delete_url, url}, list) do
-    Monitor.Checker.kill_yourself(url)
-    {:noreply, list -- [url]}
+  defp request_check(url) do
+    Task.async(fn ->
+      :poolboy.transaction(
+        :checker,
+        fn pid ->
+          Monitor.Checker.check_url(pid, url)
+        end,
+        @timeout
+      )
+    end)
   end
 
-  defp start_workers(list) do
-    list |> Enum.each(&Monitor.Checker.start_link/1)
+  defp save_result(table, result) do
+    Task.start_link(fn ->
+      {url, entry} =
+        case result do
+          {:ok, {url, code}} ->
+            {url, %Monitor.Result{status: code}}
+
+          {:error, {url, reason}} ->
+            {url, %Monitor.Result{error: reason}}
+        end
+
+      :ets.insert(table, {url, %{entry | last_checked: DateTime.utc_now()}})
+    end)
   end
 end
